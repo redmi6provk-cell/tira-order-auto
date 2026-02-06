@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+
+# Data files (contains sensitive information)
+data/
+logs/
+chrome_profiles/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# Playwright
+playwright/.cache/
+
+# Frontend (Next.js)
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/.env*.local
+
+# Misc
+*.log
+.cache/
+temp/
+tmp/

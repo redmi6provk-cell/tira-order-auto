@@ -1,0 +1,215 @@
+# ===== Root .gitignore for Tira Order Automation =====
+
+# ===== Python (Backend) =====
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / Packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Environments
+.env
+.env.local
+.env.*.local
+
+# ===== Node.js (Frontend) =====
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Next.js
+.next/
+out/
+build/
+
+# Production
+/build
+
+# Misc
+.DS_Store
+*.pem
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env*.local
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# ===== Database =====
+# PostgreSQL
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+
+# Database backups
+/backups/
+*.dump
+
+# ===== Logs =====
+logs/
+*.log
+log/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ===== Data Files =====
+backend/data/
+backend/logs/
+frontend/logs/
+
+# ===== IDE / Editor =====
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ===== OS =====
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ===== Temporary Files =====
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~.nib
+.cache/
+
+# ===== Playwright =====
+# Playwright browsers (optional - comment out if you want to cache browsers)
+# backend/.cache/ms-playwright/
+
+# Playwright test results
+test-results/
+playwright-report/
+playwright/.cache/
+
+# ===== Secrets & Credentials =====
+*.pem
+*.key
+*.cert
+*.crt
+secrets/
+credentials/
+
+# ===== Backups =====
+*.backup
+*.old
+*.orig
+
+# ===== Miscellaneous =====
+.sass-cache/
+.eslintcache
+.stylelintcache
+.parcel-cache/
+
+# ===== Project Specific =====
+# Order history files
+backend/data/orders/
+backend/data/products.json
+backend/data/addresses.json
+
+# User cookies (sensitive data)
+backend/data/users/
+
+# PM2 logs (production)
+.pm2/
