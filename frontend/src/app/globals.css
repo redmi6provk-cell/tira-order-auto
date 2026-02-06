@@ -1,0 +1,228 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --color-card: var(--bg-elevated);
+  --color-card-foreground: var(--text-primary);
+  --color-primary: var(--brand-primary);
+  --color-secondary: var(--bg-secondary);
+  --color-border: var(--border-primary);
+
+  --color-primary-hover: var(--brand-primary-hover);
+  --color-brand-secondary: var(--brand-secondary);
+
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-error: var(--color-error);
+  --color-info: var(--color-info);
+}
+
+/* ============================================
+   THEME VARIABLES - Light Mode
+   ============================================ */
+:root {
+  /* Backgrounds */
+  --bg-primary: #f8fafc;
+  --bg-secondary: #e2e8f0;
+  --bg-tertiary: #cbd5e1;
+  --bg-elevated: #ffffff;
+
+  /* Text Colors */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #64748b;
+  --text-disabled: #94a3b8;
+  --text-inverse: #ffffff;
+
+  /* Borders - Darkened for visibility */
+  --border-primary: #cbd5e1;
+  /* Slate-300 */
+  --border-secondary: #94a3b8;
+  /* Slate-400 */
+  --border-focus: #3b82f6;
+
+  /* Brand Colors */
+  --brand-primary: #3b82f6;
+  --brand-primary-hover: #2563eb;
+  --brand-secondary: #8b5cf6;
+
+  /* Semantic Colors */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+
+  /* Glassmorphism */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(226, 232, 240, 0.6);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+}
+
+/* ============================================
+   THEME VARIABLES - Dark Mode (Premium)
+   ============================================ */
+.dark {
+  /* Backgrounds - Richer, deeper blues instead of flat black/gray */
+  --bg-primary: #0B1120;
+  --bg-secondary: #151F32;
+  --bg-tertiary: #1E293B;
+  --bg-elevated: #1E293B;
+
+  /* Text Colors */
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-tertiary: #64748B;
+  --text-disabled: #475569;
+  --text-inverse: #0B1120;
+
+  /* Borders - Softer, less harsh */
+  --border-primary: #1E293B;
+  --border-secondary: #334155;
+  --border-focus: #3B82F6;
+
+  /* Brand Colors */
+  --brand-primary: #60A5FA;
+  --brand-primary-hover: #3B82F6;
+  --brand-secondary: #A78BFA;
+
+  /* Semantic Colors */
+  --color-success: #34D399;
+  --color-warning: #FBBF24;
+  --color-error: #F87171;
+  --color-info: #60A5FA;
+
+  /* Glassmorphism - Smoother */
+  --glass-bg: rgba(30, 41, 59, 0.4);
+  --glass-border: rgba(148, 163, 184, 0.2);
+  /* Increased opacity from 0.05 */
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Glassmorphism Effect */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Card Hover Effect */
+.card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.2);
+  border-color: var(--border-focus);
+}
+
+/* Premium Input Styles */
+.input-premium {
+  @apply w-full rounded-xl border border-border/60 bg-secondary/50 p-4 text-sm text-foreground transition-all duration-200 outline-none placeholder:text-foreground/30 hover:bg-secondary/70 hover:border-border focus:bg-secondary focus:border-primary/50 focus:ring-4 focus:ring-primary/10;
+}
+
+/* Premium Label Styles */
+.label-premium {
+  @apply block text-xs font-semibold text-foreground/70 mb-2 ml-1;
+}
+
+/* ============================================
+   CUSTOM SCROLLBARS
+   ============================================ */
+
+/* Light Theme Scrollbar */
+:root ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+:root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:root ::-webkit-scrollbar-thumb {
+  background: var(--border-secondary);
+  border-radius: 99px;
+}
+
+:root ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* Dark Theme Scrollbar */
+.dark ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--border-secondary);
+  border-radius: 99px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out;
+}
