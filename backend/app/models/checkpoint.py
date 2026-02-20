@@ -29,5 +29,6 @@ class CheckpointTaskStatus(BaseModel):
     status: str
     total_users: int
     processed_users: int
+    total_points: float = 0.0
     results: List[CheckpointResult] = []
     created_at: datetime = Field(default_factory=datetime.now)

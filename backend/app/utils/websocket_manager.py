@@ -160,6 +160,7 @@ class WebSocketManager:
         session_id: str = None,
         tira_order_number: str = None,
         total: float = None,
+        batch_id: str = None,
         error: str = None
     ):
         """
@@ -179,8 +180,10 @@ class WebSocketManager:
             "order_id": order_id,
             "status": status,
             "session_id": session_id,
+            "session_id": session_id,
             "tira_order_number": tira_order_number,
             "total": total,
+            "batch_id": batch_id,
             "error": error
         }
         

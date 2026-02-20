@@ -4,8 +4,9 @@ import React, { useState } from 'react';
 import { Order, api } from '@/libs/api';
 import LogModal from './LogModal';
 import BatchStatsModal from './BatchStatsModal';
+import ActionModal from './ui/ActionModal';
 import { useTheme } from '@/libs/theme';
-import { Trash2, FileText, BarChart2, CheckCircle2, XCircle, Clock, Activity } from 'lucide-react';
+import { Trash2, FileText, BarChart2, CheckCircle2, XCircle, Clock, Activity, Loader2 } from 'lucide-react';
 
 interface OrderHistoryProps {
     orders: Order[];
@@ -17,10 +18,16 @@ const OrderHistory: React.FC<OrderHistoryProps> = ({ orders }) => {
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
     const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
     const [isClearing, setIsClearing] = useState(false);
+    const [showClearAllModal, setShowClearAllModal] = useState(false);
+    const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
+    const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
     const handleClearAll = async () => {
-        if (!confirm('Are you sure you want to delete all execution history? This cannot be undone.')) return;
+        setShowClearAllModal(true);
+    };
 
+    const confirmClearAll = async () => {
+        setShowClearAllModal(false);
         setIsClearing(true);
         try {
             await api.orders.clearAll();
@@ -30,6 +37,26 @@ const OrderHistory: React.FC<OrderHistoryProps> = ({ orders }) => {
             alert('Failed to clear history');
         } finally {
             setIsClearing(false);
+        }
+    };
+
+    const handleDeleteOrder = async (orderId: string) => {
+        setOrderToDelete(orderId);
+    };
+
+    const confirmDeleteOrder = async () => {
+        if (!orderToDelete) return;
+
+        setIsDeleting(orderToDelete);
+        try {
+            await api.orders.deleteOrder(orderToDelete);
+            window.location.reload();
+        } catch (error) {
+            console.error('Failed to delete order:', error);
+            alert('Failed to delete order');
+        } finally {
+            setIsDeleting(null);
+            setOrderToDelete(null);
         }
     };
 
@@ -69,8 +96,8 @@ const OrderHistory: React.FC<OrderHistoryProps> = ({ orders }) => {
 
     const StatCard = ({ title, value, colorClass, icon: Icon }: StatCardProps) => (
         <div className={`p-6 rounded-2xl border backdrop-blur-md transition-all hover:-translate-y-1 hover:shadow-lg ${isDark
-                ? 'bg-[#1e1e2d]/60 border-white/5 hover:bg-white/5'
-                : 'bg-white/60 border-slate-200 hover:bg-white'
+            ? 'bg-[#1e1e2d]/60 border-white/5 hover:bg-white/5'
+            : 'bg-white/60 border-slate-200 hover:bg-white'
             }`}>
             <div className="flex items-center justify-between mb-4">
                 <div className={`text-[10px] font-black uppercase tracking-widest ${isDark ? 'text-foreground/40' : 'text-slate-500'
@@ -85,6 +112,27 @@ const OrderHistory: React.FC<OrderHistoryProps> = ({ orders }) => {
 
     return (
         <div className="space-y-8 max-w-7xl mx-auto">
+            <ActionModal
+                isOpen={showClearAllModal}
+                title="Clear All History"
+                message="Are you sure you want to delete all execution history? This will remove all orders, logs, and batch records. This action cannot be undone."
+                confirmText="Clear All"
+                onConfirm={confirmClearAll}
+                onCancel={() => setShowClearAllModal(false)}
+                isLoading={isClearing}
+                variant="danger"
+            />
+
+            <ActionModal
+                isOpen={!!orderToDelete}
+                title="Delete Order Record"
+                message="Are you sure you want to delete this specific order record? This action cannot be undone."
+                confirmText="Delete"
+                onConfirm={confirmDeleteOrder}
+                onCancel={() => setOrderToDelete(null)}
+                isLoading={!!isDeleting && isDeleting === orderToDelete}
+                variant="danger"
+            />
             {/* Summary Stats Row */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <StatCard
@@ -223,6 +271,16 @@ const OrderHistory: React.FC<OrderHistoryProps> = ({ orders }) => {
                                                         <BarChart2 className="w-4 h-4" />
                                                     </button>
                                                 )}
+                                                <button
+                                                    onClick={() => handleDeleteOrder(order.id)}
+                                                    className={`p-2 rounded-xl border transition-all hover:scale-105 active:scale-95 ${isDark
+                                                        ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20'
+                                                        : 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200'
+                                                        }`}
+                                                    title="Delete Order"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>

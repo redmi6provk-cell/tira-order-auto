@@ -3,6 +3,13 @@ Tira Beauty Automation - FastAPI Backend
 Main application entry point
 """
 
+import sys
+import asyncio
+
+# Force ProactorEventLoop on Windows for Playwright support
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware

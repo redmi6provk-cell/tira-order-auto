@@ -16,7 +16,7 @@ from app.models.address import Address
 from app.config import settings
 from app.utils.logger import get_logger, AutomationLogger
 from app.utils.delay_manager import DelayManager
-from app.services.data_service import order_service, address_service, card_service
+from app.services.data_service import order_service, address_service, card_service, user_service
 from app.automation.browser_manager import BrowserManager
 from app.automation.address_handler import AddressHandler
 from app.automation.cart_handler import CartHandler
@@ -64,6 +64,10 @@ class OrderExecutor:
         self.delay_manager = DelayManager()
         self.active_orders: Dict[str, Dict] = {}
         self._session_counter = 0
+        self._stop_requested = False
+        self._stop_requested = False
+        self._current_batch_id: str = None
+        self.active_tasks: Set[asyncio.Task] = set()
     
     def _get_next_session_id(self) -> str:
         """Generate unique session ID"""
@@ -86,6 +90,37 @@ class OrderExecutor:
             except Exception as e:
                 logger.debug(f"Failed to broadcast order update: {e}")
     
+    async def stop_automation(self) -> Dict[str, Any]:
+        """Stop the currently running automation"""
+        if not self.active_orders:
+            return {"success": False, "message": "No active automation to stop"}
+        
+        self._stop_requested = True
+        batch_id = self._current_batch_id
+        logger.info(f"[STOP] Stop requested for batch {batch_id}")
+        
+        # Broadcast stop event
+        await self._broadcast_log(
+            level="WARN",
+            message="Stop automation requested by user",
+            step="STOP",
+            metadata={"batch_id": batch_id}
+        )
+        
+        # Cancel all active tasks
+        if self.active_tasks:
+            logger.info(f"[STOP] Cancelling {len(self.active_tasks)} active tasks...")
+            for task in self.active_tasks:
+                if not task.done():
+                    task.cancel()
+        
+        
+        return {
+            "success": True,
+            "message": "Stop signal sent. Running orders will complete, remaining will be skipped.",
+            "batch_id": batch_id
+        }
+    
     async def execute_bulk_order(self, config: OrderConfig) -> List[Dict[str, Any]]:
         """
         Execute orders across a range of users with concurrency control
@@ -96,11 +131,15 @@ class OrderExecutor:
         Returns:
             List of order results for each user
         """
+        # Reset stop flag at the start of each bulk execution
+        self._stop_requested = False
+        
         logger.info("="*70)
         logger.info("[START] BULK ORDER EXECUTION (RANGE-BASED)")
         logger.info("="*70)
         
         batch_id = str(uuid.uuid4())
+        self._current_batch_id = batch_id
         logger.info(f"[INFO] User Range: {config.user_range_start} - {config.user_range_end}")
         logger.info(f"[INFO] Concurrent Browsers: {config.concurrent_browsers}")
         logger.info(f"[INFO] Products to Order: {len(config.products)}")
@@ -141,10 +180,12 @@ class OrderExecutor:
         for idx, user in enumerate(users, 1):
             session_id = f"user_{user['id']}_{uuid.uuid4().hex[:8]}"
             logger.info(f"[QUEUE] User {idx}/{len(users)} (ID: {user['id']}): Session {session_id}")
-            task = self._execute_single_order_with_semaphore(
+            task = asyncio.create_task(self._execute_single_order_with_semaphore(
                 config, session_id, idx, semaphore, user, batch_id
-            )
+            ))
             tasks.append(task)
+            self.active_tasks.add(task)
+            task.add_done_callback(self.active_tasks.discard)
         
         # Execute all tasks concurrently (with semaphore limiting)
         logger.info(f"[START] Executing orders for {len(tasks)} users...")
@@ -172,8 +213,10 @@ class OrderExecutor:
                 errors += 1
                 logger.error(f"[ERROR] Task {i+1} returned unexpected result type: {type(res)}")
         
+        stopped = self._stop_requested
+        
         logger.info("="*70)
-        logger.info("[COMPLETE] BULK ORDER EXECUTION FINISHED")
+        logger.info(f"[COMPLETE] BULK ORDER EXECUTION {'STOPPED' if stopped else 'FINISHED'}")
         logger.info(f"[STATS] Successful: {successful}")
         logger.info(f"[STATS] Failed: {failed}")
         logger.info(f"[STATS] Errors: {errors}")
@@ -181,17 +224,22 @@ class OrderExecutor:
         
         # Broadcast completion
         await self._broadcast_log(
-            level="INFO",
-            message=f"Bulk order execution completed: {successful} successful, {failed} failed, {errors} errors",
-            step="BULK_COMPLETE",
+            level="WARN" if stopped else "INFO",
+            message=f"Bulk order execution {'stopped by user' if stopped else 'completed'}: {successful} successful, {failed} failed, {errors} errors",
+            step="BULK_STOPPED" if stopped else "BULK_COMPLETE",
             metadata={
                 "batch_id": batch_id,
                 "successful": successful,
                 "failed": failed,
                 "errors": errors,
-                "total": len(results)
+                "total": len(results),
+                "stopped": stopped
             }
         )
+        
+        # Reset state
+        self._stop_requested = False
+        self._current_batch_id = None
         
         return results
     
@@ -205,8 +253,28 @@ class OrderExecutor:
         batch_id: str = None
     ) -> Dict[str, Any]:
         """Execute single order with concurrency control"""
-        async with semaphore:
-            return await self.execute_single_order(config, session_id, order_number, user, batch_id)
+        try:
+            async with semaphore:
+                # Check if stop was requested before starting this user
+                if self._stop_requested:
+                    logger.info(f"[SKIP] Skipping user {user['id']} — stop requested")
+                    return {
+                        'order_id': None,
+                        'session_id': session_id,
+                        'order_number': order_number,
+                        'status': 'skipped',
+                        'error': 'Automation stopped by user'
+                    }
+                return await self.execute_single_order(config, session_id, order_number, user, batch_id)
+        except asyncio.CancelledError:
+            logger.warning(f"[STOP] Task for user {user['id']} cancelled immediately")
+            return {
+                'order_id': None,
+                'session_id': session_id,
+                'order_number': order_number,
+                'status': 'stopped',
+                'error': 'Automation stopped by user (immediate)'
+            }
 
     
     async def execute_single_order(
@@ -283,6 +351,22 @@ class OrderExecutor:
                     setup_logger.log_step("WARN", "May not be logged in - proceeding anyway")
                 else:
                     setup_logger.log_step("AUTH", "[OK] Successfully authenticated")
+                    
+                    # Refresh Session Cookies
+                    try:
+                        updated_cookies = await context.cookies()
+                        # specifically check if f.session changed
+                        old_f_session = next((c['value'] for c in normalized_cookies if c['name'] == 'f.session'), None)
+                        new_f_session = next((c['value'] for c in updated_cookies if c['name'] == 'f.session'), None)
+                        
+                        if new_f_session and new_f_session != old_f_session:
+                            setup_logger.log_step("AUTH", "Detected session cookie refresh, updating database")
+                            await user_service.update_user_cookies(user['id'], updated_cookies)
+                            setup_logger.log_step("AUTH", "[OK] Session cookies updated in database")
+                        else:
+                            setup_logger.log_step("AUTH", "Session cookies are up to date")
+                    except Exception as cookie_err:
+                        logger.error(f"Failed to refresh session cookies: {cookie_err}")
 
                 # check for Test Login Mode
                 if config.mode == ExecutionMode.TEST_LOGIN:
@@ -412,7 +496,8 @@ class OrderExecutor:
                         await self._broadcast_order_update(
                             order_id=current_order_id,
                             status="processing",
-                            session_id=session_id
+                            session_id=session_id,
+                            batch_id=batch_id
                         )
                         
                         auto_logger.log_step("INFO", f"=== STARTING ORDER REPETITION {i+1}/{config.repetition_count} ===")
@@ -495,7 +580,8 @@ class OrderExecutor:
                             status="completed",
                             session_id=session_id,
                             tira_order_number=tira_order_number,
-                            total=cart_total
+                            total=cart_total,
+                            batch_id=batch_id
                         )
                         
                         results.append({
@@ -525,6 +611,7 @@ class OrderExecutor:
                         order_id=current_order_id,
                         status="failed",
                         session_id=session_id,
+                        batch_id=batch_id,
                         error=error_msg
                     )
                     
@@ -544,6 +631,28 @@ class OrderExecutor:
                     if context.pages and context.pages[0].is_closed():
                          logger.error("Browser page closed unexpectedly. Aborting repetitions.")
                          break
+
+        except asyncio.CancelledError:
+             logger.warning(f"[STOP] Session {session_id} cancelled during execution")
+             if 'current_order_id' in locals():
+                await self._update_order_status(
+                    current_order_id, OrderStatus.FAILED,
+                    error_message="Automation stopped by user"
+                )
+                await self._broadcast_order_update(
+                    order_id=current_order_id,
+                    status="failed",
+                    session_id=session_id,
+                    batch_id=batch_id,
+                    error="Automation stopped by user"
+                )
+             return {
+                'order_id': locals().get('current_order_id'),
+                'session_id': session_id,
+                'order_number': order_number,
+                'status': 'stopped',
+                'error': 'Automation stopped by user'
+            }
 
         except Exception as e:
             logger.error(f"[CRITICAL] Session failed: {e}")

@@ -46,6 +46,22 @@ async def clear_orders():
         raise HTTPException(status_code=500, detail="Failed to clear history")
     return {"message": "Success"}
 
+@router.delete("/{order_id}")
+async def delete_order(order_id: str):
+    """Delete a specific order"""
+    success = await order_service.delete_order(order_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Order not found or failed to delete")
+    return {"message": "Order deleted successfully", "id": order_id}
+
+@router.delete("/batch/{batch_id}")
+async def delete_batch(batch_id: str):
+    """Delete an entire batch of orders"""
+    success = await order_service.delete_batch(batch_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Batch not found or failed to delete")
+    return {"message": "Batch deleted successfully", "id": batch_id}
+
 @router.get("/batches/history")
 async def get_batch_history():
     """Get history of all order batches"""

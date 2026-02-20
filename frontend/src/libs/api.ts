@@ -114,6 +114,16 @@ export interface CheckpointResponse {
     message: string;
 }
 
+export interface CheckpointStatus {
+    status: 'processing' | 'completed' | 'failed' | 'not_found';
+    progress: number;
+    total: number;
+    total_points: number;
+    started_at: string;
+    completed_at?: string;
+    error?: string;
+}
+
 const API_BASE = "/api/proxy";
 
 // Token management
@@ -218,6 +228,8 @@ export const api = {
         getBatchStats: (batchId: string) => apiFetch(`${API_BASE}/orders/batch/${batchId}/stats`).then(r => r.json()),
         getBatches: () => apiFetch(`${API_BASE}/orders/batches/history`).then(r => r.json()),
         clearAll: () => apiFetch(`${API_BASE}/orders/`, { method: 'DELETE' }).then(r => r.json()),
+        deleteOrder: (id: string) => apiFetch(`${API_BASE}/orders/${id}`, { method: 'DELETE' }).then(r => r.json()),
+        deleteBatch: (id: string) => apiFetch(`${API_BASE}/orders/batch/${id}`, { method: 'DELETE' }).then(r => r.json()),
     },
 
     // Automation
@@ -227,6 +239,9 @@ export const api = {
             body: JSON.stringify({ config })
         }).then(r => r.json()),
         getActive: () => apiFetch(`${API_BASE}/automation/active`).then(r => r.json()),
+        stop: () => apiFetch(`${API_BASE}/automation/stop`, {
+            method: 'POST'
+        }).then(r => r.json()),
         testLogin: (userId: number) => apiFetch(`${API_BASE}/automation/test-login/${userId}`, {
             method: 'POST'
         }).then(r => r.json()),

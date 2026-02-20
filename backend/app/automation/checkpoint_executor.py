@@ -5,10 +5,11 @@ Updated to handle Tira Beauty cookie format: f.session=s%3AbK_88JTBaOkxr4ffBru3W
 """
 
 import asyncio
+import sys
 import uuid
 import json
-import requests
 from typing import List, Dict, Any
+from playwright.sync_api import sync_playwright
 from datetime import datetime
 
 from app.models.checkpoint import CheckpointConfig, CheckpointResult
@@ -20,21 +21,7 @@ logger = get_logger("checkpoint_executor")
 
 # Exact URL from a.py
 TIRA_ACCOUNT_API = "https://www.tirabeauty.com/ext/reward-engine/application/api/v1.0/user/account"
-
-# Exact Headers from a.py
-# Note: 'Referer' is often required by Tira's WAF
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Referer": "https://www.tirabeauty.com/",
-    "Origin": "https://www.tirabeauty.com",
-    "Connection": "keep-alive",
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-origin",
-}
+TIRA_HOME = "https://www.tirabeauty.com/"
 
 class CheckpointExecutor:
     """
@@ -55,7 +42,8 @@ class CheckpointExecutor:
             "status": "processing",
             "config": config,
             "started_at": datetime.now(),
-            "total": config.user_range_end - config.user_range_start + 1
+            "total": config.user_range_end - config.user_range_start + 1,
+            "total_points": 0.0
         }
         self.results[task_id] = []
         
@@ -87,8 +75,18 @@ class CheckpointExecutor:
                 
             await asyncio.gather(*tasks)
             
+            # Calculate total points
+            total_points = 0.0
+            for r in self.results.get(task_id, []):
+                try:
+                    if r.points and r.points.replace('.', '', 1).isdigit():
+                        total_points += float(r.points)
+                except (ValueError, TypeError):
+                    pass
+            
             self.active_tasks[task_id]["status"] = "completed"
             self.active_tasks[task_id]["completed_at"] = datetime.now()
+            self.active_tasks[task_id]["total_points"] = total_points
             
         except Exception as e:
             logger.error(f"Bulk check failed: {e}")
@@ -101,10 +99,10 @@ class CheckpointExecutor:
         user: Dict[str, Any], 
         semaphore: asyncio.Semaphore
     ) -> CheckpointResult:
-        """Check a single user using requests (in thread)"""
+        """Check a single user using Playwright browser (sync, in thread)"""
         async with semaphore:
             try:
-                # Run the blocking request in a thread
+                # Run sync Playwright in a thread to avoid Windows event loop issue
                 result = await asyncio.to_thread(self._make_request, user)
                 
                 # Append result
@@ -112,7 +110,6 @@ class CheckpointExecutor:
                 
                 # Save points to DB if found
                 if result.points and result.points != "N/A":
-                    # Note: update_user_points is async
                     await user_service.update_user_points(result.user_id, result.points)
                 
                 logger.info(f"User {user['id']} checked: {result.points} points ({result.account_name}) - Status: {result.status}")
@@ -131,68 +128,76 @@ class CheckpointExecutor:
                 self.results[task_id].append(result)
                 return result
 
-    def _parse_cookies(self, raw_cookies: Any, user_id: int) -> Dict[str, str]:
+    def _prepare_playwright_cookies(self, raw_cookies: Any, user_id: int) -> list:
         """
-        Parse cookies from various formats:
-        1. Cookie string format: "f.session=value; Path=/; Expires=..."
-        2. JSON array: [{"name": "f.session", "value": "..."}]
-        3. JSON dict: {"f.session": "value"}
+        Parse cookies from DB and convert to Playwright cookie format.
+        Playwright expects: [{name, value, domain, path, expires, httpOnly, secure, sameSite}]
         """
-        cookie_dict = {}
+        cookies = []
         
         if not raw_cookies:
-            return cookie_dict
+            return cookies
             
         logger.info(f"[{user_id}] Raw cookies type: {type(raw_cookies)}")
         
+        # Parse raw cookies into a list of dicts
+        cookie_list = []
         if isinstance(raw_cookies, str):
             try:
-                # Try parsing as cookie string format first
-                # Format: "f.session=s%3AbK_88JTBaOkxr4ffBru3WDnXOQnXp_Mf...; Path=/; Expires=..."
-                if '=' in raw_cookies:
-                    logger.info(f"[{user_id}] Parsing cookie string format...")
-                    # Split by semicolon and parse each cookie
-                    for cookie_pair in raw_cookies.split(';'):
-                        cookie_pair = cookie_pair.strip()
-                        if '=' in cookie_pair:
-                            parts = cookie_pair.split('=', 1)
-                            name = parts[0].strip()
-                            value = parts[1].strip() if len(parts) > 1 else ''
-                            # Skip cookie attributes (Path, Expires, Domain, etc.)
-                            if name.lower() not in ['path', 'expires', 'domain', 'secure', 'httponly', 'samesite', 'max-age']:
-                                cookie_dict[name] = value
-                                logger.info(f"[{user_id}] Parsed cookie: {name}={value[:20]}...")
-                else:
-                    # Try parsing as JSON
-                    logger.info(f"[{user_id}] Parsing JSON cookies...")
-                    parsed = json.loads(raw_cookies)
-                    if isinstance(parsed, list):
-                        for c in parsed:
-                            if isinstance(c, dict) and 'name' in c and 'value' in c:
-                                cookie_dict[c['name']] = c['value']
-                    elif isinstance(parsed, dict):
-                        cookie_dict = parsed
+                parsed = json.loads(raw_cookies)
+                if isinstance(parsed, list):
+                    cookie_list = parsed
+                elif isinstance(parsed, dict):
+                    cookie_list = [parsed]
             except json.JSONDecodeError:
-                logger.error(f"[{user_id}] Failed to parse cookies as JSON")
-            except Exception as e:
-                logger.error(f"[{user_id}] Cookie parsing failed: {e}")
-                
+                logger.error(f"[{user_id}] Failed to parse cookies JSON string")
+                return cookies
         elif isinstance(raw_cookies, list):
-            logger.info(f"[{user_id}] Processing list cookies...")
-            for c in raw_cookies:
-                if isinstance(c, dict) and 'name' in c and 'value' in c:
-                    cookie_dict[c['name']] = c['value']
-                    
+            cookie_list = raw_cookies
         elif isinstance(raw_cookies, dict):
-            logger.info(f"[{user_id}] Using dict cookies...")
-            cookie_dict = raw_cookies
+            cookie_list = [raw_cookies]
+        
+        # Map sameSite values to Playwright format
+        same_site_map = {
+            "no_restriction": "None",
+            "none": "None",
+            "lax": "Lax",
+            "strict": "Strict",
+        }
+        
+        for c in cookie_list:
+            if not isinstance(c, dict) or 'name' not in c or 'value' not in c:
+                continue
             
-        return cookie_dict
+            pw_cookie = {
+                "name": c["name"],
+                "value": c["value"],
+                "domain": c.get("domain", ".www.tirabeauty.com"),
+                "path": c.get("path", "/"),
+            }
+            
+            # Handle expires/expirationDate
+            expires = c.get("expirationDate") or c.get("expires")
+            if expires and expires != -1:
+                pw_cookie["expires"] = float(expires)
+            
+            if "httpOnly" in c:
+                pw_cookie["httpOnly"] = bool(c["httpOnly"])
+            if "secure" in c:
+                pw_cookie["secure"] = bool(c["secure"])
+            
+            raw_ss = str(c.get("sameSite", "Lax")).lower()
+            pw_cookie["sameSite"] = same_site_map.get(raw_ss, "Lax")
+            
+            cookies.append(pw_cookie)
+            logger.info(f"[{user_id}] Prepared cookie: {pw_cookie['name']}={pw_cookie['value'][:20]}...")
+        
+        return cookies
 
     def _make_request(self, user: Dict[str, Any]) -> CheckpointResult:
         """
-        Blocking request function matching a.py logic.
-        Makes API call to Tira Beauty to fetch user points and account status.
+        Uses Playwright headless browser to make API call.
+        This bypasses WAF by letting anti-bot JS run naturally.
         """
         user_id = user['id']
         points = "N/A"
@@ -200,15 +205,15 @@ class CheckpointExecutor:
         status = "success"
         error_msg = None
 
-        logger.info(f"[{user_id}] Starting API check...")
+        logger.info(f"[{user_id}] Starting Playwright API check...")
 
         try:
             # 1. Prepare Cookies
             logger.info(f"[{user_id}] Preparing cookies...")
             raw_cookies = user.get('cookies')
-            cookie_dict = self._parse_cookies(raw_cookies, user_id)
+            pw_cookies = self._prepare_playwright_cookies(raw_cookies, user_id)
 
-            if not cookie_dict:
+            if not pw_cookies:
                 logger.warning(f"[{user_id}] No cookies found after parsing")
                 return CheckpointResult(
                     user_id=user_id,
@@ -218,107 +223,114 @@ class CheckpointExecutor:
                     error="No cookies found"
                 )
             
-            # Log specific important cookies presence
-            if 'f.session' in cookie_dict:
-                session_cookie = cookie_dict['f.session']
-                logger.info(f"[{user_id}] Found 'f.session' cookie: {session_cookie[:30]}...")
+            # Check for f.session
+            has_session = any(c['name'] == 'f.session' for c in pw_cookies)
+            if has_session:
+                session_val = next(c['value'] for c in pw_cookies if c['name'] == 'f.session')
+                logger.info(f"[{user_id}] Found 'f.session' cookie: {session_val[:30]}...")
             else:
                 logger.warning(f"[{user_id}] 'f.session' cookie MISSING!")
             
-            logger.info(f"[{user_id}] Total cookies prepared: {len(cookie_dict)}")
-            logger.info(f"[{user_id}] Cookie names: {list(cookie_dict.keys())}")
+            logger.info(f"[{user_id}] Total cookies prepared: {len(pw_cookies)}")
+            logger.info(f"[{user_id}] Cookie names: {[c['name'] for c in pw_cookies]}")
 
-            # 2. Make Request (Exact copy of a.py logic)
-            # ot
+            # 2. Force ProactorEventLoop on Windows (required for subprocess creation)
+            if sys.platform == 'win32':
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
             
-            response = requests.get(
-                TIRA_ACCOUNT_API,
-                headers=HEADERS,
-                cookies=cookie_dict,
-                timeout=15,
-                allow_redirects=False  # Don't follow redirects automatically
-            )
-            
-            # logger.info(f"[{user_id}] Response Status: {response.status_code}")
-            # logger.info(f"[{user_id}] Response Headers: {dict(response.headers)}")
-            
-            # Log first 500 chars of response body
-            #response_preview = response.text[:500] if response.text else "(empty)"
-            #logger.info(f"[{user_id}] Response Body Preview: {response_preview}")
-            
-            # 3. Handle Response
-            if response.status_code == 200:
+            # Launch Playwright browser and make request (sync API)
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                )
+                
+                # Add cookies to context
+                context.add_cookies(pw_cookies)
+                
+                page = context.new_page()
+                
+                # Visit homepage first to let WAF JS generate anti-bot cookies
+                logger.info(f"[{user_id}] Visiting Tira homepage to pass WAF...")
                 try:
-                    data = response.json()
-                    logger.info(f"[{user_id}] Response JSON Success field: {data.get('success')}")
-                    
-                    # Validate success flag
-                    if data.get('success') is True:
-                        # Extract data object
-                        data_obj = data.get('data', {})
-                        logger.info(f"[{user_id}] Data object keys: {list(data_obj.keys())}")
+                    page.goto(TIRA_HOME, wait_until="domcontentloaded", timeout=30000)
+                    # Wait a moment for WAF scripts to execute
+                    page.wait_for_timeout(3000)
+                    logger.info(f"[{user_id}] Homepage loaded, WAF cookies should be set")
+                except Exception as e:
+                    logger.warning(f"[{user_id}] Homepage load warning (continuing anyway): {e}")
+                
+                # Now make the actual API call
+                logger.info(f"[{user_id}] Making API request via Playwright...")
+                response = page.goto(TIRA_ACCOUNT_API, wait_until="domcontentloaded", timeout=15000)
+                
+                resp_status = response.status if response else 0
+                logger.info(f"[{user_id}] Response status: {resp_status}")
+                
+                # 3. Handle Response
+                if resp_status == 200:
+                    try:
+                        body = response.text()
+                        data = json.loads(body)
+                        logger.info(f"[{user_id}] Response JSON Success field: {data.get('success')}")
+                        logger.info(f"[{user_id}] Response JSON Data field: {data.get('data')}")    
                         
-                        # Extract Points from data.pointSummary (not userTier.pointSummary)
-                        point_summary = data_obj.get('pointSummary', {})
-                        if 'earned' in point_summary:
-                            points = str(point_summary['earned'])
-                            logger.info(f"[{user_id}] Earned points found: {points}")
-                        else:
-                            logger.warning(f"[{user_id}] pointSummary.earned not found. pointSummary: {point_summary}")
+                        if data.get('success') is True:
+                            data_obj = data.get('data', {})
+                            logger.info(f"[{user_id}] Data object keys: {list(data_obj.keys())}")
                             
-                        # Extract Tier Name from data.userTier.name
-                        user_tier = data_obj.get('userTier', {})
-                        tier_name = user_tier.get('name')
-                        if tier_name:
-                            account_name = tier_name
-                            logger.info(f"[{user_id}] Tier/Name found: {account_name}")
+                            # Extract Points
+                            point_summary = data_obj.get('pointSummary', {})
+                            if 'available' in point_summary:
+                                points = str(point_summary['available'])
+                                logger.info(f"[{user_id}] Available points found: {points}")
+                            else:
+                                logger.warning(f"[{user_id}] pointSummary.available not found. pointSummary: {point_summary}")
+                                
+                            # Extract Tier Name
+                            user_tier = data_obj.get('userTier', {})
+                            tier_name = user_tier.get('name')
+                            if tier_name:
+                                account_name = tier_name
+                                logger.info(f"[{user_id}] Tier/Name found: {account_name}")
+                            else:
+                                logger.warning(f"[{user_id}] userTier.name not found. userTier: {user_tier}")
                         else:
-                            logger.warning(f"[{user_id}] userTier.name not found. userTier: {user_tier}")
-                        
-                    else:
-                        # 200 OK but success=False
+                            status = "failed"
+                            error_msg = f"API returned success=False: {data.get('message', 'Unknown error')}"
+                            logger.warning(f"[{user_id}] success=False. Full response: {data}")
+                            
+                    except json.JSONDecodeError as jde:
                         status = "failed"
-                        error_msg = f"API returned success=False: {data.get('message', 'Unknown error')}"
-                        logger.warning(f"[{user_id}] success=False. Full response: {data}")
+                        body_text = response.text() if response else "(no response)"
+                        error_msg = f"Invalid JSON response: {str(jde)}"
+                        logger.error(f"[{user_id}] Invalid JSON body. Response text: {body_text[:200]}")
                         
-                except json.JSONDecodeError as jde:
-                    status = "failed"
-                    error_msg = f"Invalid JSON response: {str(jde)}"
-                    logger.error(f"[{user_id}] Invalid JSON body. Response text: {response.text[:200]}")
+                elif resp_status in [401, 403]:
+                    status = "logged_out"
+                    body_text = response.text() if response else "(no response)"
+                    error_msg = f"Authentication failed (HTTP {resp_status}). User needs to re-login."
+                    logger.warning(f"[{user_id}] Auth failed. Response: {body_text[:200]}")
                     
-            elif response.status_code in [401, 403]:
-                status = "logged_out"
-                error_msg = f"Authentication failed (HTTP {response.status_code}). User needs to re-login."
-                logger.warning(f"[{user_id}] Auth failed. Response: {response.text[:200]}")
+                elif resp_status == 302:
+                    status = "logged_out"
+                    error_msg = f"Redirect detected (session expired?)"
+                    logger.warning(f"[{user_id}] Redirect detected")
+                    
+                else:
+                    status = "failed"
+                    body_text = response.text() if response else "(no response)"
+                    error_msg = f"API Error HTTP {resp_status}"
+                    logger.error(f"[{user_id}] API Failed with status {resp_status}. Body: {body_text[:200]}")
                 
-            elif response.status_code == 302:
-                # Redirect - might indicate session expired
-                redirect_location = response.headers.get('Location', 'unknown')
-                status = "logged_out"
-                error_msg = f"Redirect detected (session expired?). Location: {redirect_location}"
-                logger.warning(f"[{user_id}] Redirect to: {redirect_location}")
-                
-            else:
-                status = "failed"
-                error_msg = f"API Error HTTP {response.status_code}"
-                logger.error(f"[{user_id}] API Failed with status {response.status_code}. Body: {response.text[:200]}")
+                browser.close()
             
-            # Add delay between API calls to avoid rate limiting
+            # Delay between checks to avoid rate limiting
             import time
-            delay_seconds = 3  # Reduced from 5 to 3 seconds for faster processing
+            delay_seconds = 3
             logger.info(f"[{user_id}] Waiting {delay_seconds} seconds before next request...")
             time.sleep(delay_seconds)
 
-        except requests.exceptions.Timeout:
-            status = "failed"
-            error_msg = "Request timeout (15s)"
-            logger.error(f"[{user_id}] Request timed out")
-            
-        except requests.exceptions.ConnectionError as ce:
-            status = "failed"
-            error_msg = f"Connection error: {str(ce)}"
-            logger.error(f"[{user_id}] Connection error: {ce}")
-            
         except Exception as e:
             status = "failed"
             error_msg = f"Unexpected error: {str(e)}"
@@ -347,6 +359,7 @@ class CheckpointExecutor:
             "status": task["status"],
             "progress": len(self.results.get(task_id, [])),
             "total": task.get("total", 0),
+            "total_points": task.get("total_points", 0.0),
             "started_at": task.get("started_at"),
             "completed_at": task.get("completed_at"),
             "error": task.get("error")

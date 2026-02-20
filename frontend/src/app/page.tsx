@@ -341,6 +341,8 @@ export default function Home() {
                     setSelectedBatchId(batchId);
                     setShowResultsModal(true);
                   }}
+                  logs={logs}
+                  isWsConnected={isConnected}
                 />
               </div>
             )}

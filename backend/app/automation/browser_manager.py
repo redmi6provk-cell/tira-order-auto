@@ -5,6 +5,7 @@ FIXED: Proper zoom implementation without flickering/looping
 """
 
 import asyncio
+import sys
 from typing import Optional, List, Dict, Any
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { api, CheckpointResult } from '@/libs/api';
 import UserRangeSelector from './UserRangeSelector';
 import { useTheme } from '@/libs/theme';
-import { Play, Loader2, CheckCircle2, XCircle, LogOut, Info, Gift, Download } from 'lucide-react';
+import { Play, Loader2, CheckCircle2, XCircle, LogOut, Info, Gift, Download, Users, Star } from 'lucide-react';
+import ActionModal from './ui/ActionModal';
 
 export default function CheckpointAutomation() {
     const { mode } = useTheme();
@@ -12,6 +13,8 @@ export default function CheckpointAutomation() {
     const [taskId, setTaskId] = useState<string | null>(null);
     const [results, setResults] = useState<CheckpointResult[]>([]);
     const [status, setStatus] = useState<any>(null);
+    const [showSummary, setShowSummary] = useState(false);
+    const [summaryData, setSummaryData] = useState({ total: 0, points: 0 });
 
     const handleStart = async () => {
         setIsProcessing(true);
@@ -74,6 +77,14 @@ export default function CheckpointAutomation() {
                 if (statusRes.status === 'completed' || statusRes.status === 'failed') {
                     setIsProcessing(false);
                     setTaskId(null);
+
+                    if (statusRes.status === 'completed') {
+                        setSummaryData({
+                            total: statusRes.progress || 0,
+                            points: statusRes.total_points || 0
+                        });
+                        setShowSummary(true);
+                    }
                 }
             }, 3000);
         }
@@ -84,8 +95,8 @@ export default function CheckpointAutomation() {
     return (
         <div className="space-y-6">
             <div className={`rounded-2xl p-8 border relative overflow-hidden group transition-all ${isDark
-                    ? 'bg-gradient-to-br from-[#1e1e2d] to-black/20 border-white/5 ring-1 ring-white/5'
-                    : 'bg-white border-slate-200 shadow-sm'
+                ? 'bg-gradient-to-br from-[#1e1e2d] to-black/20 border-white/5 ring-1 ring-white/5'
+                : 'bg-white border-slate-200 shadow-sm'
                 }`}>
                 <div className={`absolute inset-0 bg-gradient-to-br transition-opacity ${isDark ? 'from-blue-500/[0.05] to-purple-500/[0.02]' : 'from-blue-500/5 to-purple-500/5'
                     }`}></div>
@@ -107,8 +118,8 @@ export default function CheckpointAutomation() {
                                 <button
                                     onClick={downloadCSV}
                                     className={`text-xs font-bold uppercase px-3 py-1.5 rounded-lg border transition-all flex items-center gap-2 ${isDark
-                                            ? 'bg-white/5 hover:bg-white/10 text-foreground/70 border-white/5'
-                                            : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                                        ? 'bg-white/5 hover:bg-white/10 text-foreground/70 border-white/5'
+                                        : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
                                         }`}
                                 >
                                     <Download className="w-3 h-3" /> Export CSV
@@ -158,8 +169,8 @@ export default function CheckpointAutomation() {
             </div>
 
             <div className={`rounded-2xl border overflow-hidden backdrop-blur-xl ${isDark
-                    ? 'bg-[#1e1e2d]/60 border-white/5 ring-1 ring-white/5'
-                    : 'bg-white/60 border-black/5 ring-1 ring-black/5'
+                ? 'bg-[#1e1e2d]/60 border-white/5 ring-1 ring-white/5'
+                : 'bg-white/60 border-black/5 ring-1 ring-black/5'
                 }`}>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
@@ -212,8 +223,8 @@ export default function CheckpointAutomation() {
                                             <div className="flex items-center justify-center space-x-2">
                                                 {result.status === 'success' && (
                                                     <span className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${isDark
-                                                            ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                                                            : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                                        ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                                                        : 'bg-emerald-50 text-emerald-600 border-emerald-200'
                                                         }`}>
                                                         <CheckCircle2 className="w-3 h-3" />
                                                         <span>ACTIVE</span>
@@ -221,8 +232,8 @@ export default function CheckpointAutomation() {
                                                 )}
                                                 {result.status === 'logged_out' && (
                                                     <span className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${isDark
-                                                            ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
-                                                            : 'bg-amber-50 text-amber-600 border-amber-200'
+                                                        ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                                                        : 'bg-amber-50 text-amber-600 border-amber-200'
                                                         }`}>
                                                         <LogOut className="w-3 h-3" />
                                                         <span>EXPIRED</span>
@@ -230,8 +241,8 @@ export default function CheckpointAutomation() {
                                                 )}
                                                 {result.status === 'failed' && (
                                                     <span className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${isDark
-                                                            ? 'bg-red-500/10 text-red-500 border-red-500/20'
-                                                            : 'bg-red-50 text-red-600 border-red-200'
+                                                        ? 'bg-red-500/10 text-red-500 border-red-500/20'
+                                                        : 'bg-red-50 text-red-600 border-red-200'
                                                         }`} title={result.error}>
                                                         <XCircle className="w-3 h-3" />
                                                         <span>ERROR</span>
@@ -251,6 +262,16 @@ export default function CheckpointAutomation() {
                     </table>
                 </div>
             </div>
+
+            <ActionModal
+                isOpen={showSummary}
+                title="Checkpoint Completed"
+                message={`Successfully checked ${summaryData.total} accounts. Total Tira Points accumulated: ${summaryData.points.toLocaleString()}.`}
+                confirmText="Great!"
+                onConfirm={() => setShowSummary(false)}
+                onCancel={() => setShowSummary(false)}
+                variant="info"
+            />
         </div>
     );
 }

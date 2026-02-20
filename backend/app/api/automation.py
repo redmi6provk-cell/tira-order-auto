@@ -93,6 +93,12 @@ async def get_active_orders():
         "orders": active
     }
 
+@router.post("/stop")
+async def stop_automation():
+    """Stop the currently running automation"""
+    result = await order_executor.stop_automation()
+    return result
+
 @router.post("/test-login/{user_id}")
 async def test_user_login(user_id: int):
     """Test if a user's cookies are valid"""

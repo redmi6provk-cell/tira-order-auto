@@ -444,6 +444,52 @@ class OrderDataService:
             rows = result.mappings().all()
             return [dict(row) for row in rows]
 
+    async def delete_order(self, order_id: str) -> bool:
+        """Delete an order and its associated logs"""
+        async with AsyncSessionLocal() as session:
+            try:
+                # Delete logs first (foreign key)
+                await session.execute(
+                    text("DELETE FROM logs WHERE order_id = :order_id"),
+                    {"order_id": order_id}
+                )
+                # Delete order
+                result = await session.execute(
+                    text("DELETE FROM orders WHERE id = :id"),
+                    {"id": order_id}
+                )
+                await session.commit()
+                return result.rowcount > 0
+            except Exception as e:
+                logger.error(f"Error deleting order {order_id}: {e}")
+                await session.rollback()
+                return False
+
+    async def delete_batch(self, batch_id: str) -> bool:
+        """Delete all orders and logs associated with a batch"""
+        async with AsyncSessionLocal() as session:
+            try:
+                # 1. Delete all logs for all orders in this batch
+                query_logs = """
+                DELETE FROM logs 
+                WHERE order_id IN (SELECT id FROM orders WHERE batch_id = :batch_id)
+                """
+                await session.execute(text(query_logs), {"batch_id": batch_id})
+                
+                # 2. Delete all orders for this batch
+                result = await session.execute(
+                    text("DELETE FROM orders WHERE batch_id = :batch_id"),
+                    {"batch_id": batch_id}
+                )
+                
+                await session.commit()
+                logger.info(f"[OK] Deleted batch {batch_id} ({result.rowcount} orders)")
+                return result.rowcount > 0
+            except Exception as e:
+                logger.error(f"Error deleting batch {batch_id}: {e}")
+                await session.rollback()
+                return False
+
     async def get_all_batches(self) -> List[Dict[str, Any]]:
         """Get summary of all order batches"""
         async with AsyncSessionLocal() as session:
