@@ -27,17 +27,18 @@ export function useSystemStats(enabled: boolean = true) {
 
         const connect = () => {
             // Determine WebSocket URL
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            let wsUrl = '';
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
-            // Better host detection
-            let host = process.env.NEXT_PUBLIC_WS_URL;
-            if (!host) {
+            if (apiUrl) {
+                // Convert http(s):// to ws(s)://
+                wsUrl = apiUrl.replace(/^http/, 'ws') + '/ws/system';
+            } else {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const currentHost = window.location.hostname;
                 // Assume backend is on port 8005
-                host = `${currentHost}:8005`;
+                wsUrl = `${protocol}//${currentHost}:8005/ws/system`;
             }
-
-            const wsUrl = `${protocol}//${host}/ws/system`;
 
             const socket = new WebSocket(wsUrl);
 

@@ -92,11 +92,12 @@ class OrderExecutor:
     
     async def stop_automation(self) -> Dict[str, Any]:
         """Stop the currently running automation"""
-        if not self.active_orders:
+        if not self._current_batch_id and not self.active_orders:
             return {"success": False, "message": "No active automation to stop"}
         
         self._stop_requested = True
         batch_id = self._current_batch_id
+
         logger.info(f"[STOP] Stop requested for batch {batch_id}")
         
         # Broadcast stop event
@@ -189,7 +190,14 @@ class OrderExecutor:
         
         # Execute all tasks concurrently (with semaphore limiting)
         logger.info(f"[START] Executing orders for {len(tasks)} users...")
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        results = []
+        for x in raw_results:
+            if isinstance(x, list):
+                results.extend(x)
+            else:
+                results.append(x)
         
         # Calculate statistics and log detailed errors
         successful = 0
@@ -251,30 +259,30 @@ class OrderExecutor:
         semaphore: asyncio.Semaphore,
         user: Dict[str, Any],
         batch_id: str = None
-    ) -> Dict[str, Any]:
+    ) -> List[Dict[str, Any]]:
         """Execute single order with concurrency control"""
         try:
             async with semaphore:
                 # Check if stop was requested before starting this user
                 if self._stop_requested:
                     logger.info(f"[SKIP] Skipping user {user['id']} — stop requested")
-                    return {
+                    return [{
                         'order_id': None,
                         'session_id': session_id,
                         'order_number': order_number,
                         'status': 'skipped',
                         'error': 'Automation stopped by user'
-                    }
+                    }]
                 return await self.execute_single_order(config, session_id, order_number, user, batch_id)
         except asyncio.CancelledError:
             logger.warning(f"[STOP] Task for user {user['id']} cancelled immediately")
-            return {
+            return [{
                 'order_id': None,
                 'session_id': session_id,
                 'order_number': order_number,
                 'status': 'stopped',
                 'error': 'Automation stopped by user (immediate)'
-            }
+            }]
 
     
     async def execute_single_order(
@@ -646,26 +654,26 @@ class OrderExecutor:
                     batch_id=batch_id,
                     error="Automation stopped by user"
                 )
-             return {
+             return [{
                 'order_id': locals().get('current_order_id'),
                 'session_id': session_id,
                 'order_number': order_number,
                 'status': 'stopped',
                 'error': 'Automation stopped by user'
-            }
+            }]
 
         except Exception as e:
             logger.error(f"[CRITICAL] Session failed: {e}")
             # If setup failed, we register a generic failure for this user
             # OR we just return empty results?
             # Better to return a failed result so it's counted
-            return {
+            return [{
                 'order_id': str(uuid.uuid4()),
                 'session_id': session_id,
                 'order_number': order_number,
                 'status': 'failed',
                 'error': f"Session initialization failed: {str(e)}"
-            }
+            }]
             
         finally:
             if context:

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     ORDERS_HISTORY_FILE: Path = ORDERS_DIR / "orders_history.json"
 
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://tira_admin:tira@localhost:5432/tira_automation"
+    DATABASE_URL: str
 
     
     # Session Management (replaces Chrome profiles)

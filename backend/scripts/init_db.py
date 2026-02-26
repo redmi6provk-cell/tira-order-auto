@@ -380,35 +380,35 @@ async def populate_data(conn):
     else:
         logger.warning(f"names.json not found at {NAMES_JSON_PATH}")
 
-    # 2. Populate Tira Users from Cookies
-    if os.path.exists(COOKIES_JSON_PATH):
-        logger.info(f"Loading cookies from {COOKIES_JSON_PATH}...")
-        try:
-            with open(COOKIES_JSON_PATH, 'r') as f:
-                cookie_arrays = json.load(f)
+    # # 2. Populate Tira Users from Cookies
+    # if os.path.exists(COOKIES_JSON_PATH):
+    #     logger.info(f"Loading cookies from {COOKIES_JSON_PATH}...")
+    #     try:
+    #         with open(COOKIES_JSON_PATH, 'r') as f:
+    #             cookie_arrays = json.load(f)
             
-            if cookie_arrays and isinstance(cookie_arrays, list):
-                logger.info(f"Found {len(cookie_arrays)} cookie sets. Creating users...")
+    #         if cookie_arrays and isinstance(cookie_arrays, list):
+    #             logger.info(f"Found {len(cookie_arrays)} cookie sets. Creating users...")
                 
-                users_data = []
-                for idx, cookies in enumerate(cookie_arrays):
-                    # Each item is a list of cookies for one user
-                    # Convert to JSON string for storage
-                    cookies_json = json.dumps(cookies)
-                    users_data.append((cookies_json,))
+    #             users_data = []
+    #             for idx, cookies in enumerate(cookie_arrays):
+    #                 # Each item is a list of cookies for one user
+    #                 # Convert to JSON string for storage
+    #                 cookies_json = json.dumps(cookies)
+    #                 users_data.append((cookies_json,))
                 
-                await conn.copy_records_to_table(
-                    'tira_users',
-                    records=users_data,
-                    columns=['cookies']
-                )
-                logger.info(f"Created {len(users_data)} tira_users from cookies.")
-            else:
-                logger.warning("cookies.json is empty or invalid format.")
-        except Exception as e:
-            logger.error(f"Failed to load cookies.json: {e}")
-    else:
-        logger.warning(f"cookies.json not found at {COOKIES_JSON_PATH}")
+    #             await conn.copy_records_to_table(
+    #                 'tira_users',
+    #                 records=users_data,
+    #                 columns=['cookies']
+    #             )
+    #             logger.info(f"Created {len(users_data)} tira_users from cookies.")
+    #         else:
+    #             logger.warning("cookies.json is empty or invalid format.")
+    #     except Exception as e:
+    #         logger.error(f"Failed to load cookies.json: {e}")
+    # else:
+    #     logger.warning(f"cookies.json not found at {COOKIES_JSON_PATH}")
 
 
 async def init_db():
