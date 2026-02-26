@@ -17,8 +17,8 @@ logs/
 chrome_profiles/
 
 # Environment
-.env
-.env.local
+# .env
+# .env.local
 
 # IDE
 .vscode/
